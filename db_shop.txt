@@ -1,0 +1,154 @@
+CREATE DATABASE DEMO_bike_shop;
+USE DEMO_bike_shop;
+
+-- 1. Роли пользователей
+CREATE TABLE roles (
+    role_id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE
+);
+
+-- 2. Категории товаров
+CREATE TABLE categories (
+    category_id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE
+);
+
+-- 3. Поставщики (Новая таблица)
+CREATE TABLE suppliers (
+    supplier_id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(150) NOT NULL UNIQUE
+);
+
+-- 4. Способы доставки
+CREATE TABLE delivery_methods (
+    delivery_method_id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    cost DECIMAL(8,2) NOT NULL DEFAULT 0.00,
+    delivery_days TINYINT NOT NULL
+);
+
+-- 5. Пользователи
+CREATE TABLE users (
+    user_id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(60) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    role_id INT NOT NULL DEFAULT 2,
+    full_name VARCHAR(100) NOT NULL,
+    FOREIGN KEY (role_id) REFERENCES roles(role_id)
+);
+
+-- 6. Товары (Добавлено поле supplier_id)
+CREATE TABLE products (
+    product_id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    description VARCHAR(200),
+    price DECIMAL(10,2) NOT NULL,
+    discount INT DEFAULT 0,
+    image_path VARCHAR(500),
+    sku VARCHAR(60) NOT NULL UNIQUE,
+    category_id INT,
+    supplier_id INT, -- Связь с поставщиком
+    FOREIGN KEY (category_id) REFERENCES categories(category_id),
+    FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id)
+);
+
+-- 7. Варианты товаров
+CREATE TABLE product_variants (
+    variant_id INT AUTO_INCREMENT PRIMARY KEY,
+    size VARCHAR(10) NOT NULL,
+    color VARCHAR(60) NOT NULL,
+    stock_qty INT DEFAULT 0,
+    price_modifier DECIMAL(8,2) NOT NULL DEFAULT 0.00,
+    product_id INT NOT NULL,
+    FOREIGN KEY (product_id) REFERENCES products(product_id)
+);
+
+-- 8. Заказы
+CREATE TABLE orders (
+    order_id INT AUTO_INCREMENT PRIMARY KEY,
+    address VARCHAR(400) NOT NULL,
+    total_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    status ENUM('обработка','отправлено','доставлено','возврат') NOT NULL DEFAULT 'обработка',
+    payment_method ENUM('карта','наличные','онлайн') NOT NULL DEFAULT 'карта',
+    order_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    delivery_date DATE,
+    user_id INT,
+    delivery_method_id INT,
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    FOREIGN KEY (delivery_method_id) REFERENCES delivery_methods(delivery_method_id)
+);
+
+-- 9. Элементы заказа
+CREATE TABLE order_items (
+    order_item_id INT AUTO_INCREMENT PRIMARY KEY,
+    quantity INT NOT NULL DEFAULT 1,
+    price_at_order DECIMAL(10,2) NOT NULL,
+    order_id INT NOT NULL,
+    variant_id INT NOT NULL,
+    FOREIGN KEY (order_id) REFERENCES orders(order_id),
+    FOREIGN KEY (variant_id) REFERENCES product_variants(variant_id)
+);
+
+-- =========================================================================
+-- НАПОЛНЕНИЕ ДАННЫМИ
+-- =========================================================================
+
+-- 1. Роли
+INSERT INTO roles (name) VALUES 
+('guest'), 
+('client'), 
+('manager'), 
+('admin');
+
+-- 2. Пользователи
+INSERT INTO users (username, password_hash, role_id, full_name) VALUES
+('bike_admin', 'secure_bike_pass_1', 4, 'Крутилин Илья Петрович'),
+('bike_manager', 'secure_bike_pass_2', 3, 'Спицина Ольга Владимировна'),
+('bike_client', 'secure_bike_pass_3', 2, 'Рамин Скороходов Евгеньевич');
+
+-- 3. Категории
+INSERT INTO categories (name) VALUES
+('Горные велосипеды'),
+('Шоссейные велосипеды'),
+('Велошлемы');
+
+-- 4. Поставщики (Минимум 3)
+INSERT INTO suppliers (name) VALUES
+('ВелоОптТорг'),
+('БайкДистрибьюшн'),
+('ПланетаСпорт');
+
+-- 5. Товары (С указанием supplier_id)
+INSERT INTO products (name, description, price, discount, image_path, sku, category_id, supplier_id) VALUES
+('Горный байк Кросс-Кантри', 'Хардтейл с амортизационной вилкой и дисковыми тормозами', 45000.00, 10, 'images/bikes/mtb_cross.jpg', 'BIK-MTB-001', 1, 1),
+('Шоссейный болид Спидстер', 'Легкая алюминиевая рама, трансмиссия Shimano', 75000.00, 5, 'images/bikes/road_speed.jpg', 'BIK-RDS-001', 2, 2),
+('Шлем защитный Aero', 'Вентилируемый шлем с аэродинамической формой', 4000.00, 0, 'images/acc/helmet_aero.jpg', 'ACC-HLM-002', 3, 3);
+
+-- 6. Варианты товаров
+INSERT INTO product_variants (size, color, stock_qty, price_modifier, product_id) VALUES
+('19"', 'Черный матовый', 5, 0.00, 1),
+('21"', 'Черный матовый', 3, 1500.00, 1),
+('19"', 'Зеленый неон', 4, 0.00, 1),
+('M', 'Красный глянец', 2, 0.00, 2),
+('L', 'Красный глянец', 2, 0.00, 2),
+('L', 'Синий металлик', 1, 2000.00, 2),
+('M', 'Черный', 15, 0.00, 3),
+('L', 'Черный', 10, 0.00, 3);
+
+-- 7. Способы доставки
+INSERT INTO delivery_methods (name, cost, delivery_days) VALUES
+('Самовывоз из веломастерской', 0.00, 0),
+('Курьерская доставка (в собранном виде)', 1200.00, 1),
+('Транспортная компания (в коробке)', 600.00, 5);
+
+-- 8. Заказы
+INSERT INTO orders (address, total_amount, status, payment_method, order_date, user_id, delivery_method_id) VALUES
+('г. Самара, ул. Спортивная, д. 4, кв. 15', 43200.00, 'доставлено', 'карта', '2024-03-10 12:00:00', 3, 2),
+('г. Екатеринбург, ул. Колёсная, д. 12, кв. 8', 73850.00, 'обработка', 'онлайн', '2024-03-12 15:30:00', 3, 3),
+('г. Краснодар, ул. Солнечная, д. 45', 4000.00, 'возврат', 'наличные', '2024-03-15 09:15:00', 3, 1);
+
+-- 9. Товары в заказах
+INSERT INTO order_items (quantity, price_at_order, order_id, variant_id) VALUES
+(1, 40500.00, 1, 1), 
+(1, 71250.00, 2, 4), 
+(1, 4000.00, 3, 8);
