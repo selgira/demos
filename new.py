@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import *
 from PyQt6.QtGui import *
 from qt_material import apply_stylesheet
 
+
 def db():
     return Database()
 
@@ -84,14 +85,16 @@ class BaseWindow(QMainWindow):
         if discount > 0:
             base_price = float(product['price'])
             final_price = base_price * (1 - discount / 100)
-            price_text = (f"Цена: <span style='text-decoration: line-through; color: red;'>{product['price']} руб.</span> "
-                          f"<span style='color: black; font-weight: bold;'>{final_price:.2f} руб.</span>")
+            price_text = (
+                f"Цена: <span style='text-decoration: line-through; color: red;'>{product['price']} руб.</span> "
+                f"<span style='color: black; font-weight: bold;'>{final_price:.2f} руб.</span>")
         else:
             price_text = f"Цена: {product['price']} руб."
 
         # Проверка наличия на складе
         d = db()
-        d.cursor.execute("SELECT SUM(stock_qty) AS total_stock FROM product_variants WHERE product_id = %s", (product['product_id'],))
+        d.cursor.execute("SELECT SUM(stock_qty) AS total_stock FROM product_variants WHERE product_id = %s",
+                         (product['product_id'],))
         res = d.cursor.fetchone()
         total_stock = res['total_stock'] if res and res['total_stock'] is not None else 0
 
@@ -138,8 +141,17 @@ class LoginWindow(QMainWindow):
         login = self.ui.lineEdit_login.text()
         password = self.ui.lineEdit_password.text()
         d = db()
-        d.cursor.execute('SELECT * FROM users WHERE username = %s AND password_hash = %s', (login, password))
+
+        query = """
+            SELECT u.*, r.name AS role 
+            FROM users u
+            JOIN roles r ON u.role_id = r.role_id
+            WHERE u.username = %s AND u.password_hash = %s
+        """
+
+        d.cursor.execute(query, (login, password))
         user = d.cursor.fetchone()
+
         if user:
             if user['role'] == 'client':
                 self.main = ClientWindow(user)
@@ -241,8 +253,8 @@ class AdminWindow(BaseWindow):
             except Exception as e:
                 d.connect.rollback()
                 QMessageBox.critical(self, "Ошибка удаления", f"Не удалось удалить товар из базы данных.\n"
-                f"Возможно, данный товар уже есть в заказах пользователей.\n\n"
-                f"Техническая ошибка: {e}")
+                                                              f"Возможно, данный товар уже есть в заказах пользователей.\n\n"
+                                                              f"Техническая ошибка: {e}")
 
     def delete_order(self):
         row = self.ui.tableWidget_orders.currentRow()
@@ -253,7 +265,8 @@ class AdminWindow(BaseWindow):
         order_id = self.ui.tableWidget_orders.item(row, 0).text()
 
         reply = QMessageBox.question(self, "Подтверждение удаления", f"Вы уверены, что хотите безвозвратно "
-        f"удалить заказ #{order_id} и все его позиции?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                                                                     f"удалить заказ #{order_id} и все его позиции?",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
 
         if reply == QMessageBox.StandardButton.Yes:
             d = db()
@@ -401,9 +414,10 @@ class GuestWindow(BaseWindow):
         self.ui.label_user.setText("Пользователь: Гость")
 
         # Прячем всё лишнее для гостя
-        for w in (self.ui.groupOrder_2, self.ui.comboBox_filtr_prod, self.ui.lineEdit_search, self.ui.comboBox_filtr_suppliers):
+        for w in (
+        self.ui.groupOrder_2, self.ui.comboBox_filtr_prod, self.ui.lineEdit_search, self.ui.comboBox_filtr_suppliers):
             w.hide()
-            
+
         self.ui.tabWidget.removeTab(2)
         self.ui.tabWidget.removeTab(1)
 
