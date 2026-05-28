@@ -49,6 +49,9 @@
            <widget class="QLineEdit" name="lineEdit_search"/>
           </item>
           <item>
+           <widget class="QComboBox" name="comboBox_filtr_suppliers"/>
+          </item>
+          <item>
            <widget class="QComboBox" name="comboBox_filtr_prod"/>
           </item>
          </layout>
