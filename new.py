@@ -34,9 +34,18 @@ class BaseWindow(QMainWindow):
         for cat in d.cursor.fetchall():
             self.ui.comboBox_filtr_prod.addItem(cat['name'], cat['category_id'])
 
+    # --- Новая загрузка поставщиков ---
+    def load_suppliers(self, all_label="Все поставщики"):
+        self.ui.comboBox_filtr_suppliers.addItem(all_label, 0)
+        d = db()
+        d.cursor.execute('SELECT * FROM suppliers')
+        for sup in d.cursor.fetchall():
+            self.ui.comboBox_filtr_suppliers.addItem(sup['name'], sup['supplier_id'])
+
     def load_data(self):  # фильтрация, поиск и загрузка товаров
         self.clear_cards()
         cid = self.ui.comboBox_filtr_prod.currentData()
+        sid = self.ui.comboBox_filtr_suppliers.currentData()  # Получаем ID поставщика напрямую
         search_text = self.ui.lineEdit_search.text().strip()
 
         d = db()
@@ -47,6 +56,11 @@ class BaseWindow(QMainWindow):
             query += " AND category_id = %s"
             params.append(cid)
 
+        # Фильтрация по supplier_id
+        if sid != 0 and sid is not None:
+            query += " AND supplier_id = %s"
+            params.append(sid)
+
         if search_text:
             query += " AND name LIKE %s"
             params.append(f"%{search_text}%")
@@ -55,7 +69,7 @@ class BaseWindow(QMainWindow):
         for product in d.cursor.fetchall():
             self.add_card(product)
 
-    def add_card(self, product):  # создание карточек товара
+    def add_card(self, product):  # создание карточек товара с подсветкой и стилизацией цены
         frame = QFrame()
         frame.setFrameShape(QFrame.Shape.StyledPanel)
         layout = QHBoxLayout(frame)
@@ -65,11 +79,36 @@ class BaseWindow(QMainWindow):
         photo.setPixmap(QPixmap(product['image_path'] or "images/zagl.png").scaled(80, 80))
         layout.addWidget(photo)
 
-        layout.addWidget(QLabel(
-            f"{product['name']} | {product['sku']}\n"
-            f"Описание: {product['description']}\n"
-            f"Цена: {product['price']} руб.\n"
-        ))
+        # Обработка цены и скидки
+        discount = int(product['discount'] or 0)
+        if discount > 0:
+            base_price = float(product['price'])
+            final_price = base_price * (1 - discount / 100)
+            price_text = (f"Цена: <span style='text-decoration: line-through; color: red;'>{product['price']} руб.</span> "
+                          f"<span style='color: black; font-weight: bold;'>{final_price:.2f} руб.</span>")
+        else:
+            price_text = f"Цена: {product['price']} руб."
+
+        # Проверка наличия на складе
+        d = db()
+        d.cursor.execute("SELECT SUM(stock_qty) AS total_stock FROM product_variants WHERE product_id = %s", (product['product_id'],))
+        res = d.cursor.fetchone()
+        total_stock = res['total_stock'] if res and res['total_stock'] is not None else 0
+
+        # Установка цвета фона карточки
+        frame.setObjectName("productCard")
+        if total_stock == 0:
+            frame.setStyleSheet("QFrame#productCard { background-color: #87CEEB; } QLabel { background: transparent; }")
+        elif discount > 15:
+            frame.setStyleSheet("QFrame#productCard { background-color: #2E8B57; } QLabel { background: transparent; }")
+
+        info_label = QLabel()
+        info_label.setText(
+            f"<b>{product['name']}</b> | {product['sku']}<br>"
+            f"Описание: {product['description']}<br>"
+            f"{price_text}<br>"
+        )
+        layout.addWidget(info_label)
 
         disc = QLabel(f"Скидка: \n   {product['discount']}%")
         disc.setFixedSize(80, 80)
@@ -137,8 +176,12 @@ class AdminWindow(BaseWindow):
 
         self.load_categories("Все товары")
         self.ui.comboBox_filtr_prod.currentIndexChanged.connect(self.load_data)
-        self.load_data()
 
+        # Настраиваем комбобокс поставщиков для админа напрямую
+        self.load_suppliers("Все поставщики")
+        self.ui.comboBox_filtr_suppliers.currentIndexChanged.connect(self.load_data)
+
+        self.load_data()
         self.load_orders()
 
         self.ui.comboBox_new_stat.addItems(["обработка", "отправлено", "доставлено", "возврат"])
@@ -241,11 +284,10 @@ class ClientWindow(BaseWindow):
         self.ui.tabWidget.removeTab(2)
         self.ui.tabWidget.removeTab(1)
 
-        # --- ИЗМЕНЕНИЕ: Убрали self.ui.comboBox_filtr_stat из списка, чтобы не было ошибки AttributeError ---
+        # Прячем всё лишнее, включая фильтр поставщиков
         for w in (self.ui.pushButton_editStatus, self.ui.comboBox_new_stat,
-                  self.ui.label_3,
-                  self.ui.comboBox_filtr_prod, self.ui.pushButton_cancelOrder,
-                  self.ui.label_2, self.ui.lineEdit_search):
+                  self.ui.label_3, self.ui.comboBox_filtr_prod, self.ui.pushButton_cancelOrder,
+                  self.ui.label_2, self.ui.lineEdit_search, self.ui.comboBox_filtr_suppliers):
             w.hide()
 
         self.load_categories()
@@ -358,8 +400,10 @@ class GuestWindow(BaseWindow):
         self.setWindowTitle('Окно Гостя')
         self.ui.label_user.setText("Пользователь: Гость")
 
-        for w in (self.ui.groupOrder_2, self.ui.comboBox_filtr_prod, self.ui.lineEdit_search):
+        # Прячем всё лишнее для гостя
+        for w in (self.ui.groupOrder_2, self.ui.comboBox_filtr_prod, self.ui.lineEdit_search, self.ui.comboBox_filtr_suppliers):
             w.hide()
+            
         self.ui.tabWidget.removeTab(2)
         self.ui.tabWidget.removeTab(1)
 
