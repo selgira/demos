@@ -41,6 +41,7 @@ class Ui_Login(object):
         self.label_4.setObjectName("label_4")
         self.formLayout.setWidget(1, QtWidgets.QFormLayout.ItemRole.LabelRole, self.label_4)
         self.lineEdit_password = QtWidgets.QLineEdit(parent=self.centralwidget)
+        self.lineEdit_password.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
         self.lineEdit_password.setObjectName("lineEdit_password")
         self.formLayout.setWidget(1, QtWidgets.QFormLayout.ItemRole.FieldRole, self.lineEdit_password)
         self.verticalLayout.addLayout(self.formLayout)
