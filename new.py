@@ -4,6 +4,7 @@ from ui.main_window_ui import Ui_MainWindow
 from PyQt6.QtWidgets import *
 from PyQt6.QtGui import *
 from qt_material import apply_stylesheet
+from dialog_ui import Ui_ProductForm
 
 
 def db():
@@ -183,7 +184,7 @@ class AdminWindow(BaseWindow):
         self.ui.tabWidget.removeTab(2)
         self.ui.groupOrder_2.hide()
 
-        self.ui.pushButton_cancelOrder.setText("Удалить заказ")
+        self.ui.pushButton_cancelOrder.setText("Удалить товар")
         self.ui.pushButton_cancelOrder.clicked.connect(self.delete_order)
 
         self.load_categories("Все товары")
@@ -235,6 +236,17 @@ class AdminWindow(BaseWindow):
         btn_delete.setFixedSize(100, 50)
         layout.addWidget(btn_delete)
 
+        btn_edit = QPushButton("Редактировать")
+        btn_edit.clicked.connect(lambda _, p=product: self.edit_product(p))
+        btn_edit.setFixedSize(150, 50)
+        layout.addWidget(btn_edit)
+
+    def edit_product(self, product):
+        self.edit_win = ProductFormWindow(product)
+        self.edit_win.exec()
+        self.load_data()
+
+
     def delete_product(self, product):
         reply = QMessageBox.question(self, "Подтверждение удаления", f"Вы уверены, что хотите полностью "
                                                                      f"удалить товар:\n\"{product['name']}\"?",
@@ -284,6 +296,50 @@ class AdminWindow(BaseWindow):
                                                               f"\nТехническая ошибка: {e}")
 
 
+from PyQt6.QtWidgets import QDialog, QFileDialog
+from PyQt6.QtGui import QPixmap
+
+
+class ProductFormWindow(QDialog):  # Обязательно QDialog
+    def __init__(self, product):
+        super().__init__()
+        self.ui = Ui_ProductForm()  # Подключаем твой интерфейс
+        self.ui.setupUi(self)
+
+        self.setWindowTitle("Простое редактирование")
+        self.product = product
+        self.image_path = product['image_path']
+
+        # 1. Просто вставляем текущие данные в поля
+        self.ui.lineEdit_name.setText(product['name'])
+        self.ui.doubleSpinBox_price.setValue(float(product['price']))
+
+        # 2. Кнопки (если выбрала шаблон Dialog with Buttons, там будет buttonBox)
+        self.ui.pushButton_photo.clicked.connect(self.change_photo)
+        self.ui.pushButton_save.clicked.connect(self.save)
+
+    def change_photo(self):
+        # Самая простая загрузка фото без копирования файлов
+        path, _ = QFileDialog.getOpenFileName(self, "Выбрать фото")
+        if path:
+            self.image_path = path
+            # Жестко ставим размер 300x200 прямо тут
+            self.ui.label_photo.setPixmap(QPixmap(path).scaled(300, 200))
+
+    def save(self):
+        d = db()
+        # Тупо обновляем только самое важное
+        d.cursor.execute("""
+            UPDATE products 
+            SET name = %s, price = %s, image_path = %s
+            WHERE product_id = %s
+        """, (self.ui.lineEdit_name.text(),
+              self.ui.doubleSpinBox_price.value(),
+              self.image_path,
+              self.product['product_id']))
+        d.connect.commit()
+        self.close()  # Закрываем окно, и главное окно само обновится!
+
 class ClientWindow(BaseWindow):
     def __init__(self, user):
         super().__init__()
@@ -294,115 +350,21 @@ class ClientWindow(BaseWindow):
         self.setWindowTitle("Окно для Клиента")
         self.ui.label_user.setText(f"Пользователь: {user['full_name']}")
 
+        # Прячем всё лишнее для гостя
+        for w in (
+                self.ui.groupOrder_2, self.ui.comboBox_filtr_prod, self.ui.lineEdit_search,
+                self.ui.comboBox_filtr_suppliers):
+            w.hide()
+
         self.ui.tabWidget.removeTab(2)
         self.ui.tabWidget.removeTab(1)
 
-        # Прячем всё лишнее, включая фильтр поставщиков
-        for w in (self.ui.pushButton_editStatus, self.ui.comboBox_new_stat,
-                  self.ui.label_3, self.ui.comboBox_filtr_prod, self.ui.pushButton_cancelOrder,
-                  self.ui.label_2, self.ui.lineEdit_search, self.ui.comboBox_filtr_suppliers):
-            w.hide()
+        d = db()
+        d.cursor.execute('SELECT * FROM products')
+        for product in d.cursor.fetchall():
+            self.add_card(product)
 
-        self.load_categories()
-        self.load_data()
-        self.load_delivery()
-
-        self.ui.comboVariant.currentIndexChanged.connect(self.update_total)
-        self.ui.spinQuantity.valueChanged.connect(self.update_total)
-        self.ui.comboDelivery.currentIndexChanged.connect(self.update_total)
-        self.ui.pushButton_CreateOrder.clicked.connect(self.create_order)
         self.ui.pushButton_logout.clicked.connect(self.go_back)
-
-    def add_card_extra(self, layout, product):
-        btn = QPushButton("Выбрать")
-        btn.clicked.connect(lambda _, p=product: self.select_product(p))
-        btn.setFixedSize(110, 50)
-        layout.addWidget(btn)
-
-    def select_product(self, product):
-        self.selected_product = product
-        self.ui.label_SelectedProduct.setText(f"{product['name']} | {product['sku']}")
-        d = db()
-        d.cursor.execute("SELECT * FROM product_variants WHERE product_id = %s", (product['product_id'],))
-        self.ui.comboVariant.clear()
-        for v in d.cursor.fetchall():
-            self.ui.comboVariant.addItem(f"{v['size']} / {v['color']} (в наличии: {v['stock_qty']})", v)
-        self.update_total()
-
-    def load_delivery(self):
-        d = db()
-        d.cursor.execute("SELECT * FROM delivery_methods")
-        for m in d.cursor.fetchall():
-            self.ui.comboDelivery.addItem(f"{m['name']} — {m['cost']} руб. ({m['delivery_days']} дн.)", m)
-
-    def update_total(self):
-        if not self.selected_product:
-            return
-        variant = self.ui.comboVariant.currentData()
-        delivery = self.ui.comboDelivery.currentData()
-        if not variant or not delivery:
-            return
-        base_price = float(self.selected_product['price'])
-        modifier = float(variant['price_modifier'])
-        discount = int(self.selected_product['discount'])
-        price_with_modifier = base_price + modifier
-        price_with_discount = price_with_modifier * (1 - discount / 100)
-        total = price_with_discount * self.ui.spinQuantity.value() + float(delivery['cost'])
-        self.ui.label_TotalValue.setText(f"{total:.2f} ₽")
-
-    def create_order(self):
-        if not self.selected_product:
-            QMessageBox.warning(self, "Ошибка", "Выберите товар")
-            return
-        address = self.ui.editShippingAddress.text()
-        if not address:
-            QMessageBox.warning(self, "Ошибка", "Укажите адрес доставки")
-            return
-
-        variant = self.ui.comboVariant.currentData()
-        delivery = self.ui.comboDelivery.currentData()
-        qty = self.ui.spinQuantity.value()
-
-        if qty > variant['stock_qty']:
-            if variant['stock_qty'] == 0:
-                QMessageBox.warning(self, "Товар закончился", f"К сожалению, выбранного варианта товара нет в наличии.")
-            else:
-                QMessageBox.warning(self, "Недостаточно на складе",
-                                    f"Вы хотите заказать {qty} шт., но в наличии осталось только {variant['stock_qty']} шт.")
-            return
-
-        base_price = float(self.selected_product['price'])
-        modifier = float(variant['price_modifier'])
-        discount = int(self.selected_product['discount'])
-        price_with_modifier = base_price + modifier
-        price_with_discount = price_with_modifier * (1 - discount / 100)
-        total = price_with_discount * qty + float(delivery['cost'])
-
-        d = db()
-        try:
-            d.cursor.execute("""
-                INSERT INTO orders (user_id, total_amount, status, address, delivery_method_id)
-                VALUES (%s, %s, 'обработка', %s, %s)""",
-                             (self.user['user_id'], total, address, delivery['delivery_method_id']))
-            order_id = d.cursor.lastrowid
-
-            d.cursor.execute("""
-                INSERT INTO order_items (order_id, variant_id, quantity, price_at_order)
-                VALUES (%s, %s, %s, %s)""", (order_id, variant['variant_id'], qty, price_with_discount))
-
-            d.cursor.execute("""
-                UPDATE product_variants 
-                SET stock_qty = stock_qty - %s 
-                WHERE variant_id = %s""", (qty, variant['variant_id']))
-
-            d.connect.commit()
-
-            QMessageBox.information(self, "Успех", f"Заказ оформлен!")
-            self.select_product(self.selected_product)
-
-        except Exception as e:
-            d.connect.rollback()
-            QMessageBox.critical(self, "Ошибка БД", f"Не удалось оформить заказ. Ошибка: {e}")
 
 
 class GuestWindow(BaseWindow):
@@ -431,7 +393,7 @@ class GuestWindow(BaseWindow):
 
 if __name__ == "__main__":
     app = QApplication([])
-    apply_stylesheet(app, theme='light_purple.xml', invert_secondary=True)
+    apply_stylesheet(app, theme='light_pink_500.xml', invert_secondary=True)
     myFont = QFont('Comic Sans MS')
     myFont.setPointSize(12)
     app.setFont(myFont)
